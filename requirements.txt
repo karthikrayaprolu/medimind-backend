@@ -8,7 +8,7 @@ python-multipart
 pydantic
 pydantic-settings
 pymongo
-sarvamai
+requests
 python-dotenv
 apscheduler
 google-genai

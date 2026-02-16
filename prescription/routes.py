@@ -4,8 +4,8 @@ warnings.filterwarnings("ignore")
 import os
 import json
 import re
-import zipfile
-import shutil
+import sys
+import requests
 from datetime import datetime
 from typing import List, Tuple
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from bson import ObjectId
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from sarvamai import SarvamAI
 
 try:
     from PIL import Image
@@ -28,18 +27,9 @@ from prescription.enrichment import enrich_medicines, parse_prescription_with_gr
 
 load_dotenv()
 
-# Set Sarvam AI API key from environment
-SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "")
-
-# Initialize Sarvam AI client
-try:
-    sarvam_client = SarvamAI(
-        api_subscription_key=SARVAM_API_KEY
-    )
-    print("[INIT] Sarvam AI Vision initialized")
-except Exception as e:
-    print(f"[INIT] Failed to initialize Sarvam AI client: {e}")
-    sarvam_client = None
+# Set OCR.space API key from environment
+OCR_SPACE_API_KEY = os.getenv("OCR_SPACE_API_KEY", "K82908764288957")
+print(f"[INIT] OCR.space API initialized (Key: {OCR_SPACE_API_KEY[:10]}...)")
 
 router = APIRouter()
 
@@ -135,80 +125,79 @@ def validate_image_quality(image_path: str) -> Tuple[bool, str, dict]:
         print(f"[QUALITY CHECK] Error validating image: {e}")
         return True, f"Quality check failed: {str(e)}", {}
 
-def extract_text_from_image_with_sarvam(image_path: str) -> str:
-    """Extract text from image using Sarvam AI Vision"""
-    if not sarvam_client:
-        raise HTTPException(status_code=500, detail="Sarvam AI client not initialized")
-    
-    temp_zip_path = None
+def extract_text_from_image_with_ocrspace(image_path: str) -> str:
+    """Extract text from image using OCR.space API"""
+    if not OCR_SPACE_API_KEY:
+        raise HTTPException(status_code=500, detail="OCR_SPACE_API_KEY not configured in environment")
     
     try:
-        print(f"[SARVAM] Creating document intelligence job for: {image_path}")
+        print(f"[OCR.space] Starting OCR for: {image_path}")
+        sys.stdout.flush()
         
-        # Check if file needs to be zipped
-        file_ext = os.path.splitext(image_path)[1].lower()
-        upload_path = image_path
+        # Prepare the request
+        url = "https://api.ocr.space/parse/image"
         
-        if file_ext in ['.jpg', '.jpeg', '.png']:
-            # Create a ZIP file containing the image
-            temp_zip_path = f"{os.path.splitext(image_path)[0]}_archive.zip"
-            print(f"[SARVAM] Creating ZIP archive: {temp_zip_path}")
+        with open(image_path, 'rb') as f:
+            files = {
+                'file': (os.path.basename(image_path), f, 'image/jpeg')
+            }
             
-            with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                zipf.write(image_path, os.path.basename(image_path))
+            payload = {
+                'apikey': OCR_SPACE_API_KEY,
+                'language': 'eng',
+                'isOverlayRequired': 'false',
+                'OCREngine': '2',  # Engine 2 is better for special characters
+                'scale': 'true',   # Improve OCR for low-res images
+                'isTable': 'false'
+            }
             
-            upload_path = temp_zip_path
+            print(f"[OCR.space] Sending request to API...")
+            sys.stdout.flush()
+            response = requests.post(url, files=files, data=payload, timeout=30)
         
-        # Create document intelligence job
-        job = sarvam_client.document_intelligence.create_job(
-            language="en-IN",
-            output_format="md"  # Markdown format for easier parsing
-        )
-        print(f"[SARVAM] Job created: {job.job_id}")
+        print(f"[OCR.space] Response status: {response.status_code}")
+        sys.stdout.flush()
         
-        # Upload and process
-        job.upload_file(upload_path)
-        job.start()
-        status = job.wait_until_complete()
+        if response.status_code != 200:
+            raise Exception(f"OCR.space API returned status {response.status_code}")
         
-        # Download output
-        output_path = f"./sarvam_output_{job.job_id}.zip"
-        job.download_output(output_path)
+        result = response.json()
+        print(f"[OCR.space] Response received")
+        sys.stdout.flush()
         
-        # Extract the ZIP file and read the markdown content
+        # Check for errors
+        if result.get('IsErroredOnProcessing', False):
+            error_msg = result.get('ErrorMessage', 'Unknown error')
+            error_details = result.get('ErrorDetails', '')
+            raise Exception(f"OCR.space processing error: {error_msg} - {error_details}")
+        
+        # Extract text from parsed results
+        parsed_results = result.get('ParsedResults', [])
+        if not parsed_results:
+            raise Exception("No parsed results returned from OCR.space")
+        
         extracted_text = ""
-        try:
-            with zipfile.ZipFile(output_path, 'r') as zip_ref:
-                # Extract all files
-                extract_dir = f"./sarvam_extracted_{job.job_id}"
-                zip_ref.extractall(extract_dir)
-                
-                # Read markdown files
-                for file_name in os.listdir(extract_dir):
-                    if file_name.endswith('.md'):
-                        with open(os.path.join(extract_dir, file_name), 'r', encoding='utf-8') as f:
-                            extracted_text += f.read() + "\n"
-                
-                # Cleanup extracted directory
-                shutil.rmtree(extract_dir, ignore_errors=True)
-        except Exception as e:
-            print(f"[SARVAM] Error extracting output: {e}")
-        finally:
-            # Cleanup output ZIP
-            if os.path.exists(output_path):
-                os.remove(output_path)
+        for page_result in parsed_results:
+            exit_code = page_result.get('FileParseExitCode')
+            
+            if exit_code == 1:  # Success
+                text = page_result.get('ParsedText', '')
+                extracted_text += text + "\n"
+            else:
+                error_msg = page_result.get('ErrorMessage', 'Parse failed')
+                print(f"[OCR.space] Warning: Page parse failed - {error_msg}")
         
-        # Clean up temporary ZIP file if created
-        if temp_zip_path and os.path.exists(temp_zip_path):
-            try:
-                os.remove(temp_zip_path)
-            except Exception as e:
-                print(f"[SARVAM] Error cleaning up temp ZIP: {e}")
+        if not extracted_text.strip():
+            raise Exception("No text extracted from image")
         
+        print(f"[OCR.space] Successfully extracted {len(extracted_text)} characters")
+        sys.stdout.flush()
         return extracted_text
     
     except Exception as e:
-        print(f"[SARVAM] Error extracting text: {e}")
+        print(f"[OCR.space] Error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
 
@@ -216,27 +205,41 @@ def extract_text_from_image_with_sarvam(image_path: str) -> str:
 
 @router.post("/upload-prescription")
 async def upload_prescription(file: UploadFile = File(...), user_id: str = Form(...)):
-    """Upload prescription and create medicine schedule using Sarvam AI Vision"""
+    """Upload prescription and create medicine schedule using OCR.space API"""
+    print(f"[UPLOAD] ========== NEW UPLOAD REQUEST ==========")
+    sys.stdout.flush()
+    print(f"[UPLOAD] User ID: {user_id}")
+    print(f"[UPLOAD] File: {file.filename}, Content-Type: {file.content_type}")
+    sys.stdout.flush()
+    
     try:
         # Verify user exists
+        print(f"[UPLOAD] Verifying user exists...")
         user = sync_users.find_one({"_id": ObjectId(user_id)})
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+        print(f"[UPLOAD] User verified: {user.get('email', 'N/A')}")
         
         # Save uploaded file temporarily
         file_location = f"temp_{file.filename}"
+        print(f"[UPLOAD] Saving file to: {file_location}")
         with open(file_location, "wb") as f:
             f.write(await file.read())
+        print(f"[UPLOAD] File saved successfully")
 
         # Validate image quality before OCR
+        print(f"[UPLOAD] Validating image quality...")
         quality_valid, quality_message, quality_metrics = validate_image_quality(file_location)
         quality_warnings = []
         
         if not quality_valid:
             quality_warnings.append(quality_message)
+            print(f"[UPLOAD] Quality warning: {quality_message}")
 
-        # Extract text using Sarvam AI Vision
-        text = extract_text_from_image_with_sarvam(file_location)
+        # Extract text using OCR.space API
+        print(f"[UPLOAD] Starting OCR extraction...")
+        sys.stdout.flush()
+        text = extract_text_from_image_with_ocrspace(file_location)
         print(f"[OCR] Extracted {len(text)} characters")
 
         # Parse prescription using Groq LLM
@@ -303,7 +306,8 @@ async def upload_prescription(file: UploadFile = File(...), user_id: str = Form(
         except:
             pass
 
-        
+        # Check if no medicines were extracted
+        if not medicines or len(schedule_ids) == 0:
             error_response = {
                 "success": False,
                 "prescription_id": str(prescription_id),
