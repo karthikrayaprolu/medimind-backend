@@ -51,6 +51,7 @@ class ScheduleUpdate(BaseModel):
     dosage: str = None
     frequency: str = None
     timings: List[str] = None
+    custom_times: dict = None  # {"morning": "08:00", "afternoon": "13:00", ...}
 
 # ==== HELPERS ====
 def serialize_doc(doc):
@@ -492,6 +493,16 @@ async def update_schedule(schedule_id: str, update_data: ScheduleUpdate):
                     detail="At least one valid timing is required (morning, afternoon, evening, night)"
                 )
             update_fields["timings"] = cleaned_timings
+        
+        if update_data.custom_times is not None:
+            # Validate and store custom times
+            valid_periods = ["morning", "afternoon", "evening", "night"]
+            custom_times = {}
+            for period, time in update_data.custom_times.items():
+                if period in valid_periods:
+                    custom_times[period] = time
+            if custom_times:
+                update_fields["custom_times"] = custom_times
         
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
