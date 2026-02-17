@@ -25,18 +25,34 @@ def initialize_firebase():
         except ValueError:
             pass  # Not initialized yet
         
-        # Path to Firebase credentials JSON file
-        cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_credentials.json")
+        # Try to get credentials from environment variable first (for Render/cloud deployment)
+        credentials_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
         
-        if not os.path.exists(cred_path):
-            print(f"[FCM] Warning: Firebase credentials file not found at {cred_path}")
-            print("[FCM] Push notifications will be disabled. To enable:")
-            print("      1. Go to Firebase Console -> Project Settings -> Service Accounts")
-            print("      2. Generate a new Private Key (JSON file)")
-            print("      3. Save it as 'firebase_credentials.json' in the backend root")
-            return False
+        if credentials_json:
+            # Parse JSON from environment variable
+            import json
+            try:
+                cred_dict = json.loads(credentials_json)
+                cred = credentials.Certificate(cred_dict)
+                print("[FCM] Using Firebase credentials from environment variable")
+            except Exception as e:
+                print(f"[FCM] Error parsing FIREBASE_CREDENTIALS_JSON: {e}")
+                return False
+        else:
+            # Fallback to file path (for local development)
+            cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_credentials.json")
+            
+            if not os.path.exists(cred_path):
+                print(f"[FCM] Warning: Firebase credentials not found")
+                print("[FCM] Push notifications will be disabled. To enable:")
+                print("      Option 1 (Cloud): Set FIREBASE_CREDENTIALS_JSON environment variable")
+                print("      Option 2 (Local): Place firebase_credentials.json in backend root")
+                print("      Get credentials from: Firebase Console -> Project Settings -> Service Accounts")
+                return False
+            
+            cred = credentials.Certificate(cred_path)
+            print(f"[FCM] Using Firebase credentials from file: {cred_path}")
         
-        cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
         _firebase_initialized = True
         print("[FCM] Firebase Admin SDK initialized successfully")
