@@ -424,6 +424,49 @@ async def delete_schedule(schedule_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/prescription/{prescription_id}")
+async def delete_prescription(prescription_id: str):
+    """Delete a specific prescription and its associated schedules"""
+    try:
+        # Delete associated schedules first
+        sync_schedules.delete_many({"prescription_id": prescription_id})
+        
+        # Delete the prescription
+        result = sync_prescriptions.delete_one({"_id": ObjectId(prescription_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Prescription not found")
+        
+        return JSONResponse({
+            "success": True,
+            "message": "Prescription and associated schedules deleted successfully"
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/user/{user_id}/prescriptions")
+async def clear_user_history(user_id: str):
+    """Delete all prescriptions and schedules for a user (clear history)"""
+    try:
+        # Delete all schedules for the user
+        schedules_result = sync_schedules.delete_many({"user_id": user_id})
+        
+        # Delete all prescriptions for the user
+        prescriptions_result = sync_prescriptions.delete_many({"user_id": user_id})
+        
+        return JSONResponse({
+            "success": True,
+            "message": f"Cleared {prescriptions_result.deleted_count} prescription(s) and {schedules_result.deleted_count} schedule(s)",
+            "prescriptions_deleted": prescriptions_result.deleted_count,
+            "schedules_deleted": schedules_result.deleted_count
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/schedule/{schedule_id}")
 async def update_schedule(schedule_id: str, update_data: ScheduleUpdate):
     """Update a specific schedule's fields"""
