@@ -79,3 +79,19 @@ async def health():
         "database": db_status,
         "scheduler": scheduler_status
     }
+
+
+@app.post("/api/trigger-reminders")
+async def trigger_reminders():
+    """Manually trigger reminder check - useful for testing"""
+    from scheduler.reminder_scheduler import check_and_send_reminders
+    import threading
+    
+    # Run in background thread so we don't block the response
+    thread = threading.Thread(target=check_and_send_reminders)
+    thread.start()
+    
+    return {
+        "success": True,
+        "message": "Reminder check triggered. Check logs for results."
+    }

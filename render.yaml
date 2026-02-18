@@ -43,5 +43,14 @@ services:
         value: true
       - key: ENABLE_WEB_SEARCH
         value: true
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      - key: OCR_SPACE_API_KEY
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          name: medimind-backend
+          type: web
+          property: host
       - key: DEBUG
         value: False
