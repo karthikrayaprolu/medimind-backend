@@ -44,7 +44,8 @@ def check_and_send_reminders():
     print(f"[SCHEDULER] Running reminder check at {now_local.strftime('%Y-%m-%d %H:%M:%S %Z')} (UTC: {now_utc.strftime('%H:%M')})")
     
     current_hour = now_local.hour
-    today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Use naive UTC datetime for MongoDB comparisons (MongoDB stores naive datetimes)
+    today_start_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     
     # Determine current timing period
     if 6 <= current_hour < 12:
@@ -74,7 +75,7 @@ def check_and_send_reminders():
                 last_sent = schedule.get("last_reminder_sent")
                 last_timing = schedule.get("last_reminder_timing")
                 if last_sent and last_timing == timing_period:
-                    if isinstance(last_sent, datetime) and last_sent >= today_start:
+                    if isinstance(last_sent, datetime) and last_sent >= today_start_utc:
                         print(f"[SCHEDULER] Skipping {schedule['medicine_name']}: already sent for {timing_period} today")
                         continue
                 
