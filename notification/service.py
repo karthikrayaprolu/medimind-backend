@@ -1,22 +1,19 @@
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-EMAIL_USER = os.getenv("EMAIL_USER", "")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
-EMAIL_FROM = os.getenv("EMAIL_FROM", EMAIL_USER)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "MediMind <onboarding@resend.dev>")
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def send_email(to_email: str, subject: str, body: str, html_body: str = None) -> bool:
     """
-    Send email notification to user
+    Send email notification via Resend HTTP API (works on Render free tier).
     
     Args:
         to_email: Recipient email address
@@ -31,30 +28,37 @@ def send_email(to_email: str, subject: str, body: str, html_body: str = None) ->
         print(f"[EMAIL] Disabled. Would send to {to_email}: {subject}")
         return False
     
-    if not EMAIL_USER or not EMAIL_PASSWORD:
-        print("[EMAIL] Error: EMAIL_USER or EMAIL_PASSWORD not configured")
+    if not RESEND_API_KEY:
+        print("[EMAIL] Error: RESEND_API_KEY not configured")
         return False
     
     try:
-        # Create message
-        msg = MIMEMultipart("alternative")
-        msg["From"] = EMAIL_FROM
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        
-        # Add plain text and HTML parts
-        msg.attach(MIMEText(body, "plain"))
+        payload = {
+            "from": EMAIL_FROM,
+            "to": [to_email],
+            "subject": subject,
+            "text": body,
+        }
         if html_body:
-            msg.attach(MIMEText(html_body, "html"))
-        
-        # Connect to SMTP server and send
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASSWORD)
-            server.send_message(msg)
-        
-        print(f"[EMAIL] Sent to {to_email}: {subject}")
-        return True
+            payload["html"] = html_body
+
+        response = requests.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=10,
+        )
+
+        if response.status_code in (200, 201):
+            data = response.json()
+            print(f"[EMAIL] Sent to {to_email}: {subject} (id={data.get('id', 'N/A')})")
+            return True
+        else:
+            print(f"[EMAIL] Resend API error {response.status_code}: {response.text}")
+            return False
         
     except Exception as e:
         print(f"[EMAIL] Error sending to {to_email}: {str(e)}")

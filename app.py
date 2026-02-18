@@ -95,3 +95,51 @@ async def trigger_reminders():
         "success": True,
         "message": "Reminder check triggered. Check logs for results."
     }
+
+
+@app.get("/api/debug-email")
+async def debug_email():
+    """Debug email configuration (no secrets exposed)"""
+    from notification.service import EMAIL_ENABLED, RESEND_API_KEY, EMAIL_FROM
+    
+    return {
+        "email_enabled": EMAIL_ENABLED,
+        "transport": "Resend HTTP API",
+        "resend_api_key_set": bool(RESEND_API_KEY),
+        "resend_api_key_preview": RESEND_API_KEY[:8] + "***" if RESEND_API_KEY else "NOT SET",
+        "email_from": EMAIL_FROM,
+        "env_email_enabled_raw": os.getenv("EMAIL_ENABLED", "NOT SET"),
+    }
+
+
+@app.post("/api/test-email")
+async def test_email():
+    """Send a test email to verify Resend works on production"""
+    from notification.service import send_medication_reminder, EMAIL_ENABLED, RESEND_API_KEY
+    
+    test_recipient = os.getenv("TEST_EMAIL_TO", "karthikrayaprolu13@gmail.com")
+    
+    if not EMAIL_ENABLED:
+        return {
+            "success": False,
+            "error": "EMAIL_ENABLED is false or not set",
+            "env_email_enabled": os.getenv("EMAIL_ENABLED", "NOT SET"),
+        }
+    
+    if not RESEND_API_KEY:
+        return {
+            "success": False,
+            "error": "RESEND_API_KEY is not set",
+        }
+    
+    result = send_medication_reminder(
+        to_email=test_recipient,
+        medicine_name="Test Medicine",
+        dosage="Test Dosage",
+        timing="morning"
+    )
+    
+    return {
+        "success": result,
+        "sent_to": test_recipient[:3] + "***",
+    }
