@@ -145,7 +145,7 @@ This is an automated reminder.
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr>
           <td>
-            <img src="https://moccasin-barbi-49.tiiny.site/svg/favicon" alt="MediMind" width="32" height="32" style="display:inline-block;vertical-align:middle;border:0;" />
+            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjRTg1OTBDIi8+PHJlY3QgeD0iMTMiIHk9IjciIHdpZHRoPSI2IiBoZWlnaHQ9IjE4IiByeD0iMyIgZmlsbD0id2hpdGUiLz48cmVjdCB4PSI3IiB5PSIxMyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjYiIHJ4PSIzIiBmaWxsPSJ3aGl0ZSIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjIiIGZpbGw9IiNFODU5MEMiLz48L3N2Zz4=" alt="MediMind" width="32" height="32" style="display:inline-block;vertical-align:middle;border:0;" />
             <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;vertical-align:middle;margin-left:10px;">MediMind</span>
           </td>
           <td style="text-align:right;">
