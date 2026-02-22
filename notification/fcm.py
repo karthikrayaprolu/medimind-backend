@@ -87,30 +87,29 @@ def send_push_notification(fcm_token: str, title: str, body: str, data: dict = N
     try:
         from firebase_admin import messaging
         
-        # Build the message
+        # Build the message as DATA-ONLY (no 'notification' field).
+        # This prevents FCM from auto-displaying a system notification.
+        # The local notifications scheduled on-device handle all visible
+        # notifications — this data message is only used to update app
+        # state when the app is in the foreground.
+        message_data = data or {}
+        # Include title/body in the data payload so the foreground handler
+        # can still read them if needed.
+        message_data["title"] = title
+        message_data["body"] = body
+        
         message = messaging.Message(
-            notification=messaging.Notification(
-                title=title,
-                body=body,
-            ),
-            data=data or {},
+            data={k: str(v) for k, v in message_data.items()},
             token=fcm_token,
-            # Android specific configuration
+            # Android: high priority ensures delivery even in Doze mode
             android=messaging.AndroidConfig(
                 priority="high",
-                notification=messaging.AndroidNotification(
-                    icon="notification_icon",
-                    color="#E8590C",
-                    sound="default",
-                    channel_id="medication_reminders"
-                )
             ),
-            # iOS specific configuration
+            # iOS: set content-available for silent push
             apns=messaging.APNSConfig(
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(
-                        sound="default",
-                        badge=1
+                        content_available=True,
                     )
                 )
             )

@@ -102,6 +102,8 @@ async def debug_email():
     """Debug email configuration (no secrets exposed)"""
     from notification.service import EMAIL_ENABLED, RESEND_API_KEY, EMAIL_FROM
     
+    using_shared_domain = "onboarding@resend.dev" in EMAIL_FROM
+    
     return {
         "email_enabled": EMAIL_ENABLED,
         "transport": "Resend HTTP API",
@@ -109,6 +111,12 @@ async def debug_email():
         "resend_api_key_preview": RESEND_API_KEY[:8] + "***" if RESEND_API_KEY else "NOT SET",
         "email_from": EMAIL_FROM,
         "env_email_enabled_raw": os.getenv("EMAIL_ENABLED", "NOT SET"),
+        "using_shared_domain": using_shared_domain,
+        "warning": (
+            "You are using the shared 'onboarding@resend.dev' sender. "
+            "Emails will ONLY be delivered to the Resend account-owner's address. "
+            "Verify a custom domain at https://resend.com/domains to send to all users."
+        ) if using_shared_domain else None,
     }
 
 
