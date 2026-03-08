@@ -509,9 +509,24 @@ async def update_schedule(schedule_id: str, update_data: ScheduleUpdate):
         
         update_fields["updated_at"] = datetime.utcnow()
         
+        # If the user changed custom_times or timings, clear the sent-today
+        # tracking for affected timing periods so the scheduler will fire
+        # the email/push at the new time instead of skipping it.
+        unset_fields = {}
+        if update_data.custom_times is not None:
+            for period in update_data.custom_times:
+                unset_fields[f"reminders_sent_today.{period}"] = ""
+        if update_data.timings is not None:
+            for t in update_data.timings:
+                unset_fields[f"reminders_sent_today.{t}"] = ""
+        
+        update_op = {"$set": update_fields}
+        if unset_fields:
+            update_op["$unset"] = unset_fields
+        
         result = sync_schedules.update_one(
             {"_id": ObjectId(schedule_id)},
-            {"$set": update_fields}
+            update_op
         )
         
         if result.matched_count == 0:
