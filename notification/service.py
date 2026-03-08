@@ -1,37 +1,34 @@
 import os
-import requests
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
 from dotenv import load_dotenv
 
 load_dotenv()
 
 EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "MediMind <reminders@medimind.in>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "")
 
-RESEND_API_URL = "https://api.resend.com/emails"
+# Parse sender name and email from EMAIL_FROM (format: "Name <email>")
+def _parse_sender(from_str: str):
+    import re
+    match = re.match(r'^(.*?)\s*<(.+?)>$', from_str.strip())
+    if match:
+        return {"name": match.group(1).strip(), "email": match.group(2).strip()}
+    return {"name": "MediMind", "email": from_str.strip()}
 
-# ────────────────────────────────────────────────────────────────────────
-# IMPORTANT — Resend domain verification
-# ────────────────────────────────────────────────────────────────────────
-# The default "onboarding@resend.dev" sender can ONLY deliver to the
-# Resend account-owner's email.  Emails to any other address are
-# silently dropped or land in spam.
-#
-# To send to real users you MUST:
-#   1. Add and verify your own domain in the Resend dashboard
-#      (https://resend.com/domains)
-#   2. Set EMAIL_FROM in .env to an address on that domain, e.g.
-#      EMAIL_FROM=MediMind <reminders@yourdomain.com>
-#
-# Until a custom domain is verified, email reminders will only work
-# for the account-owner's address.
-# ────────────────────────────────────────────────────────────────────────
+
+def _get_brevo_api():
+    """Get configured Brevo transactional email API instance"""
+    configuration = sib_api_v3_sdk.Configuration()
+    configuration.api_key['api-key'] = BREVO_API_KEY
+    return sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
 
 
 def send_email(to_email: str, subject: str, body: str, html_body: str = None) -> bool:
     """
-    Send email notification via Resend HTTP API.
+    Send email notification via Brevo (Sendinblue) Transactional Email API.
     
     Args:
         to_email: Recipient email address
@@ -46,67 +43,34 @@ def send_email(to_email: str, subject: str, body: str, html_body: str = None) ->
         print(f"[EMAIL] Disabled. Would send to {to_email}: {subject}")
         return False
     
-    if not RESEND_API_KEY:
-        print("[EMAIL] Error: RESEND_API_KEY not configured")
+    if not BREVO_API_KEY:
+        print("[EMAIL] Error: BREVO_API_KEY not configured")
         return False
 
-    # Warn if still using the shared test domain
-    from_addr = EMAIL_FROM
-    if "onboarding@resend.dev" in from_addr:
-        print(f"[EMAIL] WARNING: Using shared 'onboarding@resend.dev' sender. "
-              f"Emails will ONLY reach the Resend account-owner's inbox. "
-              f"Verify a custom domain at https://resend.com/domains to send to all users.")
-    
     try:
-        payload = {
-            "from": from_addr,
-            "to": [to_email],
-            "subject": subject,
-            "text": body,
-            "headers": {
-                "X-Entity-Ref-ID": f"medimind-{to_email}-{subject}",
-            },
-        }
+        api_instance = _get_brevo_api()
+        sender = _parse_sender(EMAIL_FROM)
 
-        # Add reply-to if configured
-        if EMAIL_REPLY_TO:
-            payload["reply_to"] = EMAIL_REPLY_TO
-
-        if html_body:
-            payload["html"] = html_body
-
-        response = requests.post(
-            RESEND_API_URL,
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=10,
+        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": to_email}],
+            sender=sender,
+            subject=subject,
+            text_content=body,
         )
 
-        if response.status_code in (200, 201):
-            data = response.json()
-            print(f"[EMAIL] Sent to {to_email}: {subject} (id={data.get('id', 'N/A')})")
-            return True
-        elif response.status_code == 403:
-            resp_body = response.text
-            print(f"[EMAIL] 403 Forbidden — likely domain not verified or "
-                  f"sending to non-owner with shared domain. Response: {resp_body}")
-            return False
-        elif response.status_code == 422:
-            resp_body = response.text
-            print(f"[EMAIL] 422 Validation error: {resp_body}")
-            return False
-        else:
-            print(f"[EMAIL] Resend API error {response.status_code}: {response.text}")
-            return False
-        
-    except requests.exceptions.Timeout:
-        print(f"[EMAIL] Timeout sending to {to_email}")
-        return False
-    except requests.exceptions.ConnectionError:
-        print(f"[EMAIL] Connection error sending to {to_email}")
+        if html_body:
+            send_smtp_email.html_content = html_body
+
+        if EMAIL_REPLY_TO:
+            send_smtp_email.reply_to = {"email": EMAIL_REPLY_TO}
+
+        api_response = api_instance.send_transac_email(send_smtp_email)
+        message_id = api_response.message_id if hasattr(api_response, 'message_id') else 'N/A'
+        print(f"[EMAIL] Sent to {to_email}: {subject} (id={message_id})")
+        return True
+
+    except ApiException as e:
+        print(f"[EMAIL] Brevo API error sending to {to_email}: {e.status} - {e.body}")
         return False
     except Exception as e:
         print(f"[EMAIL] Error sending to {to_email}: {str(e)}")

@@ -18,3 +18,4 @@ numpy
 groq
 tavily-python
 firebase-admin
+sib-api-v3-sdk

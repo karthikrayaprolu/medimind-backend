@@ -100,30 +100,22 @@ async def trigger_reminders():
 @app.get("/api/debug-email")
 async def debug_email():
     """Debug email configuration (no secrets exposed)"""
-    from notification.service import EMAIL_ENABLED, RESEND_API_KEY, EMAIL_FROM
-    
-    using_shared_domain = "onboarding@resend.dev" in EMAIL_FROM
+    from notification.service import EMAIL_ENABLED, BREVO_API_KEY, EMAIL_FROM
     
     return {
         "email_enabled": EMAIL_ENABLED,
-        "transport": "Resend HTTP API",
-        "resend_api_key_set": bool(RESEND_API_KEY),
-        "resend_api_key_preview": RESEND_API_KEY[:8] + "***" if RESEND_API_KEY else "NOT SET",
+        "transport": "Brevo Transactional Email API",
+        "brevo_api_key_set": bool(BREVO_API_KEY),
+        "brevo_api_key_preview": BREVO_API_KEY[:12] + "***" if BREVO_API_KEY else "NOT SET",
         "email_from": EMAIL_FROM,
         "env_email_enabled_raw": os.getenv("EMAIL_ENABLED", "NOT SET"),
-        "using_shared_domain": using_shared_domain,
-        "warning": (
-            "You are using the shared 'onboarding@resend.dev' sender. "
-            "Emails will ONLY be delivered to the Resend account-owner's address. "
-            "Verify a custom domain at https://resend.com/domains to send to all users."
-        ) if using_shared_domain else None,
     }
 
 
 @app.post("/api/test-email")
 async def test_email():
-    """Send a test email to verify Resend works on production"""
-    from notification.service import send_medication_reminder, EMAIL_ENABLED, RESEND_API_KEY
+    """Send a test email to verify Brevo works on production"""
+    from notification.service import send_medication_reminder, EMAIL_ENABLED, BREVO_API_KEY
     
     test_recipient = os.getenv("TEST_EMAIL_TO", "karthikrayaprolu13@gmail.com")
     
@@ -134,10 +126,10 @@ async def test_email():
             "env_email_enabled": os.getenv("EMAIL_ENABLED", "NOT SET"),
         }
     
-    if not RESEND_API_KEY:
+    if not BREVO_API_KEY:
         return {
             "success": False,
-            "error": "RESEND_API_KEY is not set",
+            "error": "BREVO_API_KEY is not set",
         }
     
     result = send_medication_reminder(

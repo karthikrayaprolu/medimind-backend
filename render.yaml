@@ -25,10 +25,10 @@ services:
         value: none
       - key: EMAIL_ENABLED
         value: true
-      - key: RESEND_API_KEY
+      - key: BREVO_API_KEY
         sync: false
       - key: EMAIL_FROM
-        value: "MediMind <onboarding@resend.dev>"
+        value: "MediMind <reminders@medimind.in>"
       - key: GROQ_API_KEY
         sync: false
       - key: TAVILY_API_KEY
