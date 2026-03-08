@@ -1,4 +1,7 @@
 import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 from dotenv import load_dotenv
@@ -6,9 +9,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "brevo").lower()  # "brevo" or "smtp"
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "MediMind <reminders@medimind.in>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "")
+
+# SMTP config (used when EMAIL_PROVIDER=smtp)
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("EMAIL_USER", "")
+SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 
 # Parse sender name and email from EMAIL_FROM (format: "Name <email>")
 def _parse_sender(from_str: str):
@@ -26,23 +36,43 @@ def _get_brevo_api():
     return sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
 
 
-def send_email(to_email: str, subject: str, body: str, html_body: str = None) -> bool:
-    """
-    Send email notification via Brevo (Sendinblue) Transactional Email API.
-    
-    Args:
-        to_email: Recipient email address
-        subject: Email subject line
-        body: Plain text email body
-        html_body: Optional HTML formatted email body
-        
-    Returns:
-        bool: True if email sent successfully, False otherwise
-    """
-    if not EMAIL_ENABLED:
-        print(f"[EMAIL] Disabled. Would send to {to_email}: {subject}")
+def _send_via_smtp(to_email: str, subject: str, body: str, html_body: str = None) -> bool:
+    """Send email via SMTP (e.g. Gmail). Uses EMAIL_USER / EMAIL_PASSWORD from .env."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        print("[EMAIL] Error: SMTP credentials (EMAIL_USER / EMAIL_PASSWORD) not configured")
         return False
-    
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = SMTP_USER
+        msg["To"] = to_email
+        if EMAIL_REPLY_TO:
+            msg["Reply-To"] = EMAIL_REPLY_TO
+
+        msg.attach(MIMEText(body, "plain"))
+        if html_body:
+            msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_USER, to_email, msg.as_string())
+
+        print(f"[EMAIL] Sent to {to_email}: {subject} (via SMTP/{SMTP_SERVER})")
+        return True
+
+    except smtplib.SMTPAuthenticationError:
+        print(f"[EMAIL] SMTP auth failed for {SMTP_USER}. Check EMAIL_PASSWORD (use an App Password for Gmail).")
+        return False
+    except Exception as e:
+        print(f"[EMAIL] SMTP error sending to {to_email}: {str(e)}")
+        return False
+
+
+def _send_via_brevo(to_email: str, subject: str, body: str, html_body: str = None) -> bool:
+    """Send email via Brevo Transactional Email API."""
     if not BREVO_API_KEY:
         print("[EMAIL] Error: BREVO_API_KEY not configured")
         return False
@@ -75,6 +105,23 @@ def send_email(to_email: str, subject: str, body: str, html_body: str = None) ->
     except Exception as e:
         print(f"[EMAIL] Error sending to {to_email}: {str(e)}")
         return False
+
+
+def send_email(to_email: str, subject: str, body: str, html_body: str = None) -> bool:
+    """
+    Send email notification. Routes to SMTP or Brevo based on EMAIL_PROVIDER env var.
+
+    Returns:
+        bool: True if email sent successfully, False otherwise
+    """
+    if not EMAIL_ENABLED:
+        print(f"[EMAIL] Disabled. Would send to {to_email}: {subject}")
+        return False
+
+    if EMAIL_PROVIDER == "smtp":
+        return _send_via_smtp(to_email, subject, body, html_body)
+    else:
+        return _send_via_brevo(to_email, subject, body, html_body)
 
 
 def send_medication_reminder(to_email: str, medicine_name: str, dosage: str, timing: str) -> bool:

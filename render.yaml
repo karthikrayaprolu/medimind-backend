@@ -25,6 +25,16 @@ services:
         value: none
       - key: EMAIL_ENABLED
         value: true
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: SMTP_SERVER
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
       - key: BREVO_API_KEY
         sync: false
       - key: EMAIL_FROM
